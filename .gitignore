@@ -1,0 +1,10 @@
+bin/
+obj/
+build/bin/
+build/obj/
+*.user
+*.suo
+.vs/
+.idea/
+*.swp
+TestResults/

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>Excavaciones</Name>
+    <Assembly>Excavaciones\Excavaciones.dll</Assembly>
+    <AddInId>7C1E2B5A-3F7D-4C8E-9A61-5E0D2B7F4A10</AddInId>
+    <FullClassName>Excavaciones.App</FullClassName>
+    <VendorId>EXCV</VendorId>
+    <VendorDescription>Excavaciones - Movimiento de tierras para Revit</VendorDescription>
+  </AddIn>
+</RevitAddIns>

@@ -1,0 +1,30 @@
+name: Compilar plugin
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Restaurar y compilar
+        run: dotnet build src/Excavaciones/Excavaciones.csproj -c Release
+      - name: Empaquetar
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package/Excavaciones | Out-Null
+          Copy-Item build/bin/Release/Excavaciones.dll package/Excavaciones/
+          Copy-Item Excavaciones.addin package/
+          Copy-Item build/install.ps1 package/
+          Copy-Item README.md package/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Excavaciones-Revit2027
+          path: package
