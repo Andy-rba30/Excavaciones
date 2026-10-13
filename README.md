@@ -49,6 +49,8 @@ Instalación manual: copia `Excavaciones.addin` a `%APPDATA%\Autodesk\Revit\Addi
 3. En la ventana:
    - **Terreno natural**: el Toposolid del proyecto (o *Seleccionar en pantalla* para usar un suelo, masa,
      DirectShape o importación de superficie). Se usa su **cara superior**.
+     También puede ser **Nivel: plano horizontal**: el nivel elegido (+ desfase) define la **parte superior de la
+     excavación** y desde ahí hacia abajo se excava con el talud indicado, sin necesidad de topografía.
    - **Cota de plataforma**: por **nivel + desfase**, o por **cota en metros** referida al *punto base del
      proyecto*, al *punto de levantamiento* (coordenadas compartidas) o al *origen interno*.
    - **Talud de corte** y **talud de relleno** como *H : 1V* (p. ej. `1` = 1:1, `0.5` = 0.5:1, `0` = vertical).
@@ -71,7 +73,8 @@ Partidas que entrega:
 
 ### 2. Cimentación (excavación por volumen de cimentación, con taludes)
 1. Pestaña *Excavaciones* → **Cimentación**.
-2. Parámetros: terreno, **sobreexcavación lateral** (espacio de trabajo), **profundidad adicional** bajo el
+2. Parámetros: terreno (Toposolid, selección en pantalla o **nivel como plano horizontal** que marca la parte
+   superior de la excavación), **sobreexcavación lateral** (espacio de trabajo), **profundidad adicional** bajo el
    fondo (solado/mejoramiento), **talud** y **bermas**, *unir excavaciones adyacentes* (evita contar dos veces
    el volumen común de zapatas contiguas), *descontar el volumen enterrado de la cimentación*.
 3. Selecciona las cimentaciones (zapatas, losas de cimentación, vigas de cimentación, muros, columnas,
@@ -116,6 +119,8 @@ en todos los proyectos).
 ## Cómo calcula (metodología)
 
 1. **Terreno**: la cara superior del Toposolid (o del elemento elegido) se triangula → campo de alturas.
+   Con *Nivel: plano horizontal* el terreno es un rectángulo plano a la cota del nivel (+ desfase) que cubre la
+   zona de excavación más el alcance de los taludes; el resto del cálculo es idéntico.
 2. **Envolvente de corte**: desde el contorno de la plataforma (o la huella de la cimentación + sobreexcavación)
    en la cota de fondo, hacia arriba, el contorno se desplaza `H × Δz` por tramo (loft entre polígonos); las
    bermas son escalones horizontales. La altura se extiende automáticamente hasta que el talud *sale* al

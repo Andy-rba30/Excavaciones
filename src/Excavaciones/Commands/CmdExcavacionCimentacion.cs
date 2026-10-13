@@ -35,8 +35,13 @@ public class CmdExcavacionCimentacion : IExternalCommand
         if (win.ShowDialog() != true) return Result.Cancelled;
         FoundationSettings s = win.Settings;
 
-        List<Element>? terrainElements = CommandSupport.ResolveTerrain(uidoc, s.TerrainId);
-        if (terrainElements == null) return Result.Cancelled;
+        var terrainElements = new List<Element>();
+        if (!s.TerrainFromLevel)
+        {
+            List<Element>? picked = CommandSupport.ResolveTerrain(uidoc, s.TerrainId);
+            if (picked == null) return Result.Cancelled;
+            terrainElements = picked;
+        }
 
         List<Element> foundations;
         try
@@ -49,16 +54,41 @@ public class CmdExcavacionCimentacion : IExternalCommand
         catch (Autodesk.Revit.Exceptions.OperationCanceledException) { return Result.Cancelled; }
         if (foundations.Count == 0) return Result.Cancelled;
 
-        TerrainModel? terrain = CommandSupport.BuildTerrain(doc, terrainElements, out string terr);
-        if (terrain == null) { CommandSupport.ShowError(terr); return Result.Failed; }
+        var slope = new SlopeSpec { RatioH = s.RatioH, BermHeight = Medidas.MToFt(s.BermHeightM), BermWidth = Medidas.MToFt(s.BermWidthM) };
+        var warnings = new List<string>();
+        double lateral = Medidas.MToFt(s.LateralM), extra = Medidas.MToFt(s.ExtraDepthM);
+
+        TerrainModel? terrain;
+        double? zPlane = null;
+        if (s.TerrainFromLevel)
+        {
+            // El nivel (+ desfase) es la superficie del terreno: la excavación empieza ahí y baja con el talud
+            // hasta el fondo de cada cimentación (+ profundidad adicional).
+            zPlane = s.TerrainLevel!.Elevation + Medidas.MToFt(s.TerrainLevelOffsetM);
+            double minX = double.MaxValue, maxX = double.MinValue, minY = double.MaxValue, maxY = double.MinValue, minZ = double.MaxValue;
+            foreach (Element e in foundations)
+            {
+                BoundingBoxXYZ? bb = e.get_BoundingBox(null);
+                if (bb == null) continue;
+                minX = Math.Min(minX, bb.Min.X); maxX = Math.Max(maxX, bb.Max.X);
+                minY = Math.Min(minY, bb.Min.Y); maxY = Math.Max(maxY, bb.Max.Y);
+                minZ = Math.Min(minZ, bb.Min.Z);
+            }
+            if (minX == double.MaxValue) { CommandSupport.ShowError("Las cimentaciones seleccionadas no tienen geometría."); return Result.Failed; }
+            double height = Math.Max(0, zPlane.Value - minZ) + extra + Medidas.MToFt(1);
+            double margin = slope.Reach(height) + lateral + Medidas.MToFt(10);
+            terrain = CommandSupport.PlaneTerrain(zPlane.Value, (minX, maxX, minY, maxY), margin);
+        }
+        else
+        {
+            terrain = CommandSupport.BuildTerrain(doc, terrainElements, out string terr);
+            if (terrain == null) { CommandSupport.ShowError(terr); return Result.Failed; }
+        }
 
         using var group = new TransactionGroup(doc, "Excavación por cimentación");
         group.Start();
         var (cutMat, fillMat) = CommandSupport.Prepare(doc);
         var engine = new EarthworkEngine(terrain, tol, cutMat, fillMat);
-        var slope = new SlopeSpec { RatioH = s.RatioH, BermHeight = Medidas.MToFt(s.BermHeightM), BermWidth = Medidas.MToFt(s.BermWidthM) };
-        var warnings = new List<string>();
-        double lateral = Medidas.MToFt(s.LateralM), extra = Medidas.MToFt(s.ExtraDepthM);
 
         var progress = new ProgressWindow();
         RevitHelpers.SetOwner(progress, uiapp);
@@ -137,7 +167,10 @@ public class CmdExcavacionCimentacion : IExternalCommand
             totalCut += r.CutVolume; totalBuried += Math.Min(buried, r.CutVolume);
             totalFondo += r.CutBottomArea; totalTalud += r.CutSlopeArea; totalTerreno += r.CutTerrainArea;
         }
-        if (totalCut <= 0) warnings.Add("Las cimentaciones no intersectan el terreno seleccionado: ¿están bajo la superficie del Toposolid elegido?");
+        if (totalCut <= 0)
+            warnings.Add(zPlane.HasValue
+                ? "Las cimentaciones no quedan por debajo del nivel de terreno elegido: revisa el nivel y el desfase."
+                : "Las cimentaciones no intersectan el terreno seleccionado: ¿están bajo la superficie del Toposolid elegido?");
 
         // 3. Metrado
         double relleno = Math.Max(0, totalCut - totalBuried);
@@ -152,6 +185,10 @@ public class CmdExcavacionCimentacion : IExternalCommand
             new() { Partida = "Área de taludes (perfilado)", Unidad = "m²", Cantidad = Medidas.Ft2ToM2(totalTalud), Nota = "incluye bermas" },
             new() { Partida = "Área de terreno natural removido", Unidad = "m²", Cantidad = Medidas.Ft2ToM2(totalTerreno) },
         };
+        if (zPlane.HasValue)
+            rows.Add(new MetradoRow { Partida = "Cota de terreno de referencia (ref. punto base)", Unidad = "m",
+                Cantidad = RevitHelpers.ToUserMeters(doc, zPlane.Value, ElevationReference.ProjectBasePoint),
+                Nota = CommandSupport.DescribeLevelPlane(s.TerrainLevel!, s.TerrainLevelOffsetM) });
         if (results.Count > 1)
             foreach (var (name, _, r, zb, buried) in results)
                 rows.Add(new MetradoRow { Partida = $"   · {name}: excavación", Unidad = "m³", Cantidad = Medidas.Ft3ToM3(r.CutVolume), Nota = $"fondo {RevitHelpers.ToUserMeters(doc, zb, ElevationReference.ProjectBasePoint):0.00} m; cim. {Medidas.Ft3ToM3(Math.Min(buried, r.CutVolume)):0.00} m³" });
@@ -178,7 +215,10 @@ public class CmdExcavacionCimentacion : IExternalCommand
         }
 
         if (s.TryExcavateToposolid && created.Count > 0)
-            TryExcavate(doc, terrainElements, created, createWarnings);
+        {
+            if (zPlane.HasValue) createWarnings.Add("ExcavateBy: no aplica cuando el terreno es un plano en un nivel (no hay Toposolid).");
+            else TryExcavate(doc, terrainElements, created, createWarnings);
+        }
 
         group.Assimilate();
         if (createWarnings.Count > 0) CommandSupport.ShowError(string.Join("\n", createWarnings));

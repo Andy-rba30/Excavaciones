@@ -43,6 +43,16 @@ internal static class CommandSupport
         return model;
     }
 
+    /// <summary>
+    /// Terreno de referencia plano a la cota de un nivel: el nivel es la parte superior de la excavación.
+    /// Cubre la zona en planta indicada más un margen suficiente para que los taludes salgan al plano.
+    /// </summary>
+    public static TerrainModel PlaneTerrain(double z, (double minX, double maxX, double minY, double maxY) b, double margin)
+        => TerrainModel.FromPlane(z, b.minX - margin, b.maxX + margin, b.minY - margin, b.maxY + margin);
+
+    public static string DescribeLevelPlane(Level level, double offsetM)
+        => Math.Abs(offsetM) < 1e-9 ? $"Nivel {level.Name}" : $"Nivel {level.Name} {offsetM:+0.00;-0.00} m";
+
     /// <summary>Crea materiales y vincula parámetros compartidos (en una transacción propia).</summary>
     public static (ElementId cut, ElementId fill) Prepare(Document doc)
     {

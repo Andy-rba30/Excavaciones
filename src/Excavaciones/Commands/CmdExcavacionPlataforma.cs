@@ -27,9 +27,14 @@ public class CmdExcavacionPlataforma : IExternalCommand
         if (win.ShowDialog() != true) return Result.Cancelled;
         PlatformSettings s = win.Settings;
 
-        // 1. Terreno
-        List<Element>? terrainElements = CommandSupport.ResolveTerrain(uidoc, s.TerrainId);
-        if (terrainElements == null) return Result.Cancelled;
+        // 1. Terreno (elemento/selección, o plano horizontal en un nivel)
+        var terrainElements = new List<Element>();
+        if (!s.TerrainFromLevel)
+        {
+            List<Element>? picked = CommandSupport.ResolveTerrain(uidoc, s.TerrainId);
+            if (picked == null) return Result.Cancelled;
+            terrainElements = picked;
+        }
 
         // 2. Contorno de la plataforma
         List<XYZ>? boundary;
@@ -49,17 +54,36 @@ public class CmdExcavacionPlataforma : IExternalCommand
             ? s.Level.Elevation + Medidas.MToFt(s.LevelOffsetM)
             : RevitHelpers.ToInternalZ(doc, s.ElevationM, s.Reference);
 
-        TerrainModel? terrain = CommandSupport.BuildTerrain(doc, terrainElements, out string terr);
-        if (terrain == null) { CommandSupport.ShowError(terr); return Result.Failed; }
+        var cutSlope = new SlopeSpec { RatioH = s.CutRatioH, BermHeight = Medidas.MToFt(s.CutBermHeightM), BermWidth = Medidas.MToFt(s.CutBermWidthM) };
+        var fillSlope = new SlopeSpec { RatioH = s.FillRatioH };
+        var warnings = new List<string>();
+
+        TerrainModel? terrain;
+        string fuente;
+        double? zPlane = null;
+        if (s.TerrainFromLevel)
+        {
+            // El nivel (+ desfase) es la superficie del terreno: de ahí hacia abajo empieza la excavación con el talud.
+            zPlane = s.TerrainLevel!.Elevation + Medidas.MToFt(s.TerrainLevelOffsetM);
+            double height = Math.Abs(zPlane.Value - zBase) + Medidas.MToFt(1);
+            double margin = Math.Max(cutSlope.Reach(height), fillSlope.Reach(height)) + Medidas.MToFt(10);
+            terrain = CommandSupport.PlaneTerrain(zPlane.Value, PolygonUtils.Bounds(boundary), margin);
+            fuente = CommandSupport.DescribeLevelPlane(s.TerrainLevel, s.TerrainLevelOffsetM);
+            if (Math.Abs(zPlane.Value - zBase) < tol)
+                warnings.Add("La cota de plataforma coincide con la del nivel de terreno: no hay corte ni relleno.");
+        }
+        else
+        {
+            terrain = CommandSupport.BuildTerrain(doc, terrainElements, out string terr);
+            if (terrain == null) { CommandSupport.ShowError(terr); return Result.Failed; }
+            fuente = string.Join(",", terrainElements.Select(e => e.Id.Value));
+        }
 
         using var group = new TransactionGroup(doc, "Excavación de plataforma");
         group.Start();
         var (cutMat, fillMat) = CommandSupport.Prepare(doc);
 
         var engine = new EarthworkEngine(terrain, tol, cutMat, fillMat);
-        var cutSlope = new SlopeSpec { RatioH = s.CutRatioH, BermHeight = Medidas.MToFt(s.CutBermHeightM), BermWidth = Medidas.MToFt(s.CutBermWidthM) };
-        var fillSlope = new SlopeSpec { RatioH = s.FillRatioH };
-        var warnings = new List<string>();
 
         var progress = new ProgressWindow();
         RevitHelpers.SetOwner(progress, uiapp);
@@ -105,6 +129,9 @@ public class CmdExcavacionPlataforma : IExternalCommand
             new() { Partida = "Área de plataforma (contorno)", Unidad = "m²", Cantidad = Medidas.Ft2ToM2(PolygonUtils.Area(boundary)) },
             new() { Partida = "Cota de plataforma (ref. punto base)", Unidad = "m", Cantidad = cotaUser },
         };
+        if (zPlane.HasValue)
+            rows.Add(new MetradoRow { Partida = "Cota de terreno de referencia (ref. punto base)", Unidad = "m",
+                Cantidad = RevitHelpers.ToUserMeters(doc, zPlane.Value, ElevationReference.ProjectBasePoint), Nota = fuente });
 
         var res = new ResultadosWindow($"Plataforma '{s.GroupName}'", rows, warnings, s.CreateSolids && (result.CutSolids.Count + result.FillSolids.Count) > 0);
         RevitHelpers.SetOwner(res, uiapp);
@@ -116,7 +143,6 @@ public class CmdExcavacionPlataforma : IExternalCommand
         using (var t = new Transaction(doc, "Excavación de plataforma - sólidos"))
         {
             t.Start();
-            string fuente = string.Join(",", terrainElements.Select(e => e.Id.Value));
             CommandSupport.CreateShape(doc, $"EXC Corte - {s.GroupName}", "Corte", s.GroupName, result.CutSolids,
                 result.CutVolume, result.CutBottomArea, result.CutSlopeArea, result.CutTerrainArea, cutSlope.Label, zBase, s.SwellFactor, fuente, createWarnings);
             CommandSupport.CreateShape(doc, $"EXC Relleno - {s.GroupName}", "Relleno", s.GroupName, result.FillSolids,

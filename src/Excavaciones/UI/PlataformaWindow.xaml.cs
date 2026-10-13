@@ -14,10 +14,9 @@ public partial class PlataformaWindow : Window
     {
         InitializeComponent();
         _doc = doc;
-        UiHelpers.FillTerrainCombo(TerrainCombo, TerrainInfo, doc);
-        foreach (Level l in RevitHelpers.Levels(doc))
-            LevelCombo.Items.Add(new LevelChoice { Level = l, Label = $"{l.Name}  ({Medidas.FtToM(l.ProjectElevation):0.000} m)" });
-        if (LevelCombo.Items.Count > 0) LevelCombo.SelectedIndex = 0;
+        UiHelpers.FillLevelCombo(TerrainLevelCombo, doc);
+        UiHelpers.FillTerrainCombo(TerrainCombo, doc);
+        UiHelpers.FillLevelCombo(LevelCombo, doc);
         ReferenceCombo.Items.Add("Punto base del proyecto");
         ReferenceCombo.Items.Add("Punto de levantamiento (coord. compartidas)");
         ReferenceCombo.Items.Add("Origen interno");
@@ -29,7 +28,12 @@ public partial class PlataformaWindow : Window
     {
         try
         {
-            Settings.TerrainId = (TerrainCombo.SelectedItem as TerrainChoice)?.Id;
+            var terrainChoice = TerrainCombo.SelectedItem as TerrainChoice;
+            Settings.TerrainId = terrainChoice?.Id;
+            Settings.TerrainFromLevel = terrainChoice?.LevelPlane == true;
+            Settings.TerrainLevel = (TerrainLevelCombo.SelectedItem as LevelChoice)?.Level;
+            Settings.TerrainLevelOffsetM = UiHelpers.ParseDouble(TerrainLevelOffset.Text, "Desfase del nivel de terreno");
+            if (Settings.TerrainFromLevel && Settings.TerrainLevel == null) throw new FormatException("El proyecto no tiene niveles; elige un Toposolid como terreno.");
             Settings.UseLevel = ByLevel.IsChecked == true;
             Settings.Level = (LevelCombo.SelectedItem as LevelChoice)?.Level;
             Settings.LevelOffsetM = UiHelpers.ParseDouble(LevelOffset.Text, "Desfase");
@@ -50,6 +54,9 @@ public partial class PlataformaWindow : Window
             MessageBox.Show(this, ex.Message, "Dato inválido", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
+
+    private void TerrainCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        => UiHelpers.UpdateTerrainPanel(TerrainCombo, TerrainLevelPanel, TerrainInfo);
 }
 
 internal static class UiHelpers
@@ -63,16 +70,35 @@ internal static class UiHelpers
         return v;
     }
 
-    public static void FillTerrainCombo(System.Windows.Controls.ComboBox combo, System.Windows.Controls.TextBlock info, Document doc)
+    public static void FillLevelCombo(System.Windows.Controls.ComboBox combo, Document doc)
+    {
+        foreach (Level l in RevitHelpers.Levels(doc))
+            combo.Items.Add(new LevelChoice { Level = l, Label = $"{l.Name}  ({Medidas.FtToM(l.ProjectElevation):0.000} m)" });
+        if (combo.Items.Count > 0) combo.SelectedIndex = 0;
+    }
+
+    public static void FillTerrainCombo(System.Windows.Controls.ComboBox combo, Document doc)
     {
         var topos = RevitHelpers.Toposolids(doc);
         foreach (Toposolid t in topos)
             combo.Items.Add(new TerrainChoice { Id = t.Id, Label = $"Toposolid: {t.Name} (id {t.Id.Value})" });
+        combo.Items.Add(new TerrainChoice { Id = null, LevelPlane = true, Label = "Nivel: plano horizontal (el nivel es la parte superior de la excavación)" });
         combo.Items.Add(new TerrainChoice { Id = null, Label = "Seleccionar en pantalla… (Toposolid, suelo, masa, DirectShape o importación)" });
         combo.SelectedIndex = 0;
-        info.Text = topos.Count == 0
-            ? "No hay Toposolids en el proyecto; se pedirá seleccionar el terreno en pantalla."
-            : "La superficie superior del elemento se usa como terreno natural.";
+    }
+
+    /// <summary>Muestra u oculta el panel de nivel según la opción de terreno elegida y actualiza el texto de ayuda.</summary>
+    public static void UpdateTerrainPanel(System.Windows.Controls.ComboBox combo, System.Windows.UIElement levelPanel, System.Windows.Controls.TextBlock info)
+    {
+        var choice = combo.SelectedItem as TerrainChoice;
+        bool plane = choice?.LevelPlane == true;
+        levelPanel.Visibility = plane ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        if (plane)
+            info.Text = "El terreno se toma como un plano horizontal a la cota del nivel (+ desfase). Desde ahí hacia abajo se excava con el talud indicado; no se usa topografía.";
+        else if (choice != null && choice.Id == null)
+            info.Text = "Se pedirá seleccionar en pantalla el/los elementos de terreno; se usa su superficie superior.";
+        else
+            info.Text = "La superficie superior del elemento se usa como terreno natural.";
     }
 
     public static string TerrainRangeHint(Document doc)

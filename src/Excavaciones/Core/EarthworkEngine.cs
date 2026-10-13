@@ -13,6 +13,10 @@ public sealed class SlopeSpec
     public double BermWidth { get; init; }
 
     public string Label => RatioH <= 1e-9 ? "Vertical" : $"{RatioH:0.##}H:1V" + (BermHeight > 1e-9 ? $" + bermas {Medidas.FtToM(BermWidth):0.00}m @ {Medidas.FtToM(BermHeight):0.00}m" : "");
+
+    /// <summary>Alcance horizontal del talud (incluidas bermas) para una altura dada.</summary>
+    public double Reach(double height)
+        => height * RatioH + (BermHeight > 1e-9 ? Math.Floor(height / BermHeight) * BermWidth : 0);
 }
 
 /// <summary>Una porción (segmento vertical) de la envolvente de excavación o relleno.</summary>

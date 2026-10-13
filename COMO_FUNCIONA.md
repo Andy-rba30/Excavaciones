@@ -8,7 +8,7 @@ Add-in para **Autodesk Revit 2027** (.NET 10, WPF). Al abrir Revit aparece la pe
 Calcula el **corte y relleno** necesarios para dejar una plataforma plana a una cota dada dentro de un contorno.
 1. Dibujas el contorno (líneas de modelo cerradas, región rellena, suelo, área o habitación).
 2. Pulsas **Plataforma** y en la ventana eliges:
-   - **Terreno natural**: el Toposolid del proyecto (o cualquier elemento con cara superior).
+   - **Terreno natural**: el Toposolid del proyecto (o cualquier elemento con cara superior), o bien **Nivel: plano horizontal**, donde el nivel (+ desfase) es la parte superior de la excavación y desde ahí baja el talud.
    - **Cota de plataforma**: nivel + desfase, o cota en metros respecto al punto base, punto de levantamiento u origen interno.
    - **Talud de corte** y **talud de relleno** en formato H:1V (`1` = 45°, `0` = vertical).
    - **Bermas** (altura entre bermas y ancho) y **factor de esponjamiento**.
@@ -23,6 +23,7 @@ Es como el comando *Excavar* de Revit, pero con criterios de obra:
 - **Unir excavaciones adyacentes** para no contar dos veces el volumen compartido entre zapatas contiguas.
 - **Descontar el volumen enterrado** de la cimentación.
 
+El terreno puede ser un Toposolid, una selección en pantalla o un **nivel como plano horizontal** (la excavación empieza en el nivel y baja con el talud hasta el fondo de cada cimentación).
 Seleccionas zapatas, losas, vigas de cimentación, muros, columnas, etc. La huella se toma de la **cara inferior** de cada elemento. Entrega: excavación en banco, volumen de cimentación enterrada, relleno con material propio (excavación menos cimentación), eliminación de excedente (cimentación por esponjamiento) y áreas.
 
 ### Metrado
@@ -35,7 +36,7 @@ Los sólidos se crean como **Modelos genéricos (DirectShape)** con parámetros 
 Con eso puedes hacer una **tabla de planificación** de Modelos genéricos filtrada por `EXC_Tipo` y sumar `EXC_Volumen`. El archivo de parámetros compartidos se guarda en `%APPDATA%\Excavaciones\` con GUIDs fijos, así que funciona igual en todos los proyectos.
 
 ## 3. Metodología de cálculo (lo que pasa por dentro)
-1. **Terreno**: se toma la cara superior del Toposolid y se triangula. Queda un campo de alturas (una sola superficie, sin voladizos). `Core/TerrainModel.cs`
+1. **Terreno**: se toma la cara superior del Toposolid y se triangula. Queda un campo de alturas (una sola superficie, sin voladizos). Si se elige un nivel como terreno, se crea un plano horizontal a esa cota que cubre la zona de excavación más el alcance de los taludes. `Core/TerrainModel.cs`
 2. **Envolvente de corte**: desde el contorno en la cota de fondo, el polígono se desplaza hacia afuera `H × Δz` conforme sube, generando el talud por tramos (loft). Las bermas son escalones horizontales. La altura se extiende sola hasta que el talud sale a la superficie del terreno (*daylight*). `Core/EarthworkEngine.cs`
 3. **Envolvente de relleno** (solo plataforma): igual pero hacia abajo con el talud de relleno.
 4. **Corte** = terreno ∩ envolvente de corte. **Relleno** = (aire sobre el terreno) ∩ envolvente de relleno. Se calcula **triángulo a triángulo** del terreno, para que cada operación booleana sea pequeña y robusta. `Core/SolidUtils.cs`

@@ -69,6 +69,25 @@ public sealed class TerrainModel
     public double MaxY { get; private set; } = double.MinValue;
     public List<ElementId> SourceIds { get; } = new();
 
+    /// <summary>True si el terreno es un plano horizontal definido por un nivel (sin topografía).</summary>
+    public bool IsPlane { get; private set; }
+
+    /// <summary>
+    /// Terreno de referencia plano: un rectángulo horizontal a la cota <paramref name="z"/> (p. ej. la de un nivel)
+    /// que cubre la zona indicada. Se usa cuando el nivel define la parte superior de la excavación.
+    /// </summary>
+    public static TerrainModel FromPlane(double z, double minX, double maxX, double minY, double maxY)
+    {
+        var model = new TerrainModel { IsPlane = true };
+        var p00 = new XYZ(minX, minY, z);
+        var p10 = new XYZ(maxX, minY, z);
+        var p11 = new XYZ(maxX, maxY, z);
+        var p01 = new XYZ(minX, maxY, z);
+        model.Add(new TerrainTriangle(p00, p10, p11));
+        model.Add(new TerrainTriangle(p00, p11, p01));
+        return model;
+    }
+
     public static TerrainModel FromElements(IEnumerable<Element> elements, double shortCurveTolerance)
     {
         var model = new TerrainModel();

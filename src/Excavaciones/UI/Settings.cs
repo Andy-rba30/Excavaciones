@@ -6,6 +6,8 @@ namespace Excavaciones.UI;
 public sealed class TerrainChoice
 {
     public ElementId? Id { get; init; }
+    /// <summary>True: el terreno es un plano horizontal en un nivel (+ desfase), no un elemento.</summary>
+    public bool LevelPlane { get; init; }
     public string Label { get; init; } = string.Empty;
     public override string ToString() => Label;
 }
@@ -20,6 +22,9 @@ public sealed class LevelChoice
 public sealed class PlatformSettings
 {
     public ElementId? TerrainId { get; set; }          // null => seleccionar en pantalla
+    public bool TerrainFromLevel { get; set; }         // true => plano horizontal en TerrainLevel + desfase
+    public Level? TerrainLevel { get; set; }
+    public double TerrainLevelOffsetM { get; set; }
     public bool UseLevel { get; set; }
     public Level? Level { get; set; }
     public double LevelOffsetM { get; set; }
@@ -37,6 +42,9 @@ public sealed class PlatformSettings
 public sealed class FoundationSettings
 {
     public ElementId? TerrainId { get; set; }
+    public bool TerrainFromLevel { get; set; }
+    public Level? TerrainLevel { get; set; }
+    public double TerrainLevelOffsetM { get; set; }
     public double LateralM { get; set; } = 0.50;
     public double ExtraDepthM { get; set; } = 0.10;
     public double RatioH { get; set; } = 0.5;
